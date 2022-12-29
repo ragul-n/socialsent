@@ -1,17 +1,22 @@
-import lexicons
-import util
+from . import lexicons
+from . import util
 import random
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations, product
-from keras import backend as K
-from keras.models import Graph
+import tensorflow as tf
+#from keras import backend as K
+import tensorflow.keras.backend as K
+#from keras.models import Graph
 from keras.layers.core import Dense, Lambda
-from keras.optimizers import Adam, Optimizer
+from tensorflow.keras.optimizers import Adam, Optimizer
 from keras.regularizers import Regularizer
 from keras.constraints import Constraint
+import keras
+from keras.layers import Input, Dense, Lambda, Activation
+
 import theano.tensor as T
-from socialsent.representations.embedding import Embedding
+from .representations.embedding import Embedding
 
 
 """
@@ -21,16 +26,16 @@ Helper methods for learning transformations of word embeddings.
 class SimpleSGD(Optimizer):
     def __init__(self, lr=5, momentum=0., decay=0.,
                  nesterov=False, **kwargs):
-        super(SimpleSGD, self).__init__(**kwargs)
+        super(SimpleSGD, self).__init__(name="SimpleSGD",**kwargs)
         self.__dict__.update(locals())
         self.iterations = K.variable(0.)
-        self.lr = K.variable(lr)
+        self.LR = K.variable(lr)
         self.momentum = K.variable(momentum)
         self.decay = K.variable(decay)
 
     def get_updates(self, params, constraints, loss):
         grads = self.get_gradients(loss, params)
-        lr = self.lr * 0.99
+        lr = self.LR * 0.99
         self.updates = [(self.iterations, self.iterations + 1.)]
 
         # momentum
@@ -52,7 +57,7 @@ class SimpleSGD(Optimizer):
         return self.updates
 
     def get_config(self):
-        config = {'lr': float(K.get_value(self.lr)),
+        config = {'lr': float(K.get_value(self.LR)),
                   'momentum': float(K.get_value(self.momentum)),
                   'decay': float(K.get_value(self.decay)),
                   'nesterov': self.nesterov}
@@ -105,7 +110,7 @@ class DatasetMinibatchIterator:
         self.y = np.array(labels)
 
         self.batch_size = batch_size
-        self.n_batches = (self.y.size + self.batch_size - 1) / self.batch_size
+        self.n_batches = (self.y.size + self.batch_size - 1) // self.batch_size
 
     def shuffle(self):
         perm = np.random.permutation(np.arange(self.y.size))
@@ -121,7 +126,7 @@ class DatasetMinibatchIterator:
                 'y': self.y[batch][:, np.newaxis]
             }
 
-
+"""
 def get_model(inputdim, outputdim, regularization_strength=0.01, lr=0.000, cosine=False, **kwargs):
     transformation = Dense(inputdim, init='identity',
                            W_constraint=Orthogonal())
@@ -148,6 +153,31 @@ def get_model(inputdim, outputdim, regularization_strength=0.01, lr=0.000, cosin
 
     model.add_output(name='y', input='distances')
     model.compile(loss={'y': lambda y, d: K.mean(y * d)}, optimizer=SimpleSGD())
+    return model"""
+
+
+def get_model(inputdim, outputdim, regularization_strength=0.01, lr=0.000, cosine=False, **kwargs):
+    transformation = Dense(inputdim, kernel_initializer='identity', kernel_constraint=Orthogonal())
+
+    embeddings1 = Input(shape=(inputdim,))
+    embeddings2 = Input(shape=(inputdim,))
+    transformed1 = transformation(embeddings1)
+    transformed2 = transformation(embeddings2)
+
+    projected1 = Lambda(lambda x: x[:, :outputdim])(transformed1)
+    negprojected2 = Lambda(lambda x: -x[:, :outputdim])(transformed2)
+
+    if cosine:
+        normalized1 = Lambda(lambda x:  x / K.reshape(K.sqrt(K.sum(x * x, axis=1)), (x.shape[0], 1)))(projected1)
+        negnormalized2 = Lambda(lambda x:  x / K.reshape(K.sqrt(K.sum(x * x, axis=1)), (x.shape[0], 1)))(negprojected2)
+        distances =  Lambda(lambda x: K.reshape(K.sqrt(K.sum(x[0]*x[0], axis=1),(x[0].shape[0], 1))) * K.reshape(K.sqrt(K.sum(x[1]*x[1] , axis=1)), (x[1].shape[0], 1)))([normalized1, negnormalized2])
+    else:
+        #distances= Lambda(lambda x: K.reshape(K.sqrt(K.sum(x*x , axis=1)), (x.shape[0], 1)))([projected1, negprojected2])
+        #distances= Lambda(lambda x: K.reshape(K.sqrt(K.sum(x[0]*x[0], axis=1)),(x[0].shape[0], 1)) + K.reshape(K.sqrt(K.sum(x[1]*x[1] , axis=1)), (x[1].shape[0], 1)))([projected1, negprojected2])
+        distances= Lambda(lambda x: K.sqrt(K.sum(x[0]*x[0], axis=1, keepdims=True)) + K.sqrt(K.sum(x[1]*x[1] , axis=1, keepdims=True)))([projected1, negprojected2])
+
+    model = keras.Model(inputs=[embeddings1, embeddings2], outputs=distances)
+    model.compile(loss=lambda y, d: K.mean(tf.cast(y, tf.float64) * tf.cast(d, tf.float64)), optimizer=Adam())
     return model
 
 
@@ -155,17 +185,17 @@ def apply_embedding_transformation(embeddings, positive_seeds, negative_seeds,
                                    n_epochs=5, n_dim=10, force_orthogonal=False,
                                    plot=False, plot_points=50, plot_seeds=False,
                                    **kwargs):
-    print "Preparing to learn embedding tranformation"
+    print("Preparing to learn embedding tranformation")
     dataset = DatasetMinibatchIterator(embeddings, positive_seeds, negative_seeds, **kwargs)
     model = get_model(embeddings.m.shape[1], n_dim, **kwargs)
 
-    print "Learning embedding transformation"
+    print("Learning embedding transformation")
 #    prog = util.Progbar(n_epochs)
     for epoch in range(n_epochs):
         dataset.shuffle()
         loss = 0
         for i, X in enumerate(dataset):
-            loss += model.train_on_batch(X)[0] * X['y'].size
+            loss += model.train_on_batch([X["embeddings1"], X["embeddings2"]], y=X['y'])[0] * X['y'].size
             Q, b = model.get_weights()
             if force_orthogonal:
                 Q = orthogonalize(Q)

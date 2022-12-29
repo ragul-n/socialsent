@@ -3,7 +3,8 @@ import heapq
 import numpy as np
 from sklearn import preprocessing
 
-from socialsent.util import load_pickle, lines
+from .. import util
+ 
 
 class Embedding:
     """
@@ -35,7 +36,7 @@ class Embedding:
         mat = np.load(path + "-w.npy")
         if add_context:
             mat += np.load(path + "-c.npy")
-        iw = load_pickle(path + "-vocab.pkl")
+        iw = util.load_pickle(path + "-vocab.pkl")
         return cls(mat, iw, normalize) 
 
     def get_subembed(self, word_list, **kwargs):
@@ -69,7 +70,7 @@ class Embedding:
         if w in self.wi:
             return self.m[self.wi[w], :]
         else:
-            print "OOV: ", w
+            print("OOV: ", w)
             return np.zeros(self.dim)
 
     def similarity(self, w1, w2):
@@ -98,7 +99,7 @@ class SVDEmbedding(Embedding):
         ut = np.load(path + '-u.npy')
         s = np.load(path + '-s.npy')
         vocabfile = path + '-vocab.pkl'
-        self.iw = load_pickle(vocabfile)
+        self.iw = util.load_pickle(vocabfile)
         self.wi = {w:i for i, w in enumerate(self.iw)}
  
         if eig == 0.0:

@@ -1,12 +1,14 @@
-import .util as util 
+from . import util
 import functools
 import numpy as np
-import .embedding_transformer as embedding_transformer
+from . import embedding_transformer 
 from scipy.sparse import csr_matrix
 from multiprocessing import Pool
 from sklearn.linear_model import LogisticRegression, Ridge
 
-from graph_construction import similarity_matrix, transition_matrix
+from . import graph_construction
+
+# similarity_matrix, transition_matrix
 
 """
 A set of methods for inducing polarity lexicons using word embeddings and seed words.
@@ -14,7 +16,7 @@ A set of methods for inducing polarity lexicons using word embeddings and seed w
 
 def dist(embeds, positive_seeds, negative_seeds, **kwargs):
     polarities = {}
-    sim_mat = similarity_matrix(embeds, **kwargs)
+    sim_mat = graph_construction.similarity_matrix(embeds, **kwargs)
     for i, w in enumerate(embeds.iw):
         if w not in positive_seeds and w not in negative_seeds:
             pol = sum(sim_mat[embeds.wi[p_seed], i] for p_seed in positive_seeds)
@@ -73,7 +75,7 @@ def random_walk(embeddings, positive_seeds, negative_seeds, beta=0.9, **kwargs):
         positive_seeds = {word:1.0 for word in positive_seeds}
         negative_seeds = {word:1.0 for word in negative_seeds}
     words = embeddings.iw
-    M = transition_matrix(embeddings, **kwargs)
+    M = graph_construction.transition_matrix(embeddings, **kwargs)
     rpos = run_random_walk(M, weighted_teleport_set(words, positive_seeds), beta, **kwargs)
     rneg = run_random_walk(M, weighted_teleport_set(words, negative_seeds), beta, **kwargs)
     return {w: rpos[i] / (rpos[i] + rneg[i]) for i, w in enumerate(words)}
@@ -85,7 +87,7 @@ def label_propagate_probabilistic(embeddings, positive_seeds, negative_seeds, **
     One walk per label. Scores normalized to probabilities. 
     """
     words = embeddings.iw
-    M = transition_matrix(embeddings, **kwargs)
+    M = graph_construction.transition_matrix(embeddings, **kwargs)
     pos, neg = teleport_set(words, positive_seeds), teleport_set(words, negative_seeds)
     def update_seeds(r):
         r[pos] = [1, 0]
@@ -101,7 +103,7 @@ def label_propagate_continuous(embeddings, positive_seeds, negative_seeds, **kwa
     One walk for both labels, continuous non-normalized scores.
     """
     words = embeddings.iw
-    M = transition_matrix(embeddings, **kwargs)
+    M = graph_construction.transition_matrix(embeddings, **kwargs)
     pos, neg = teleport_set(words, positive_seeds), teleport_set(words, negative_seeds)
     def update_seeds(r):
         r[pos] = 1
@@ -134,7 +136,7 @@ def graph_propagate(embeddings, positive_seeds, negative_seeds, **kwargs):
                     F.add(edge[1])
         return alpha_mat
 
-    M = similarity_matrix(embeddings, **kwargs)
+    M = graph_construction.similarity_matrix(embeddings, **kwargs)
     M = (M + M.T)/2
     print("Getting positive scores..")
     pos_alpha = M.copy()
