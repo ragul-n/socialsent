@@ -1,5 +1,5 @@
-from socialsent import lexicons
-from socialsent import util
+import lexicons
+import util
 import random
 import numpy as np
 import matplotlib.pyplot as plt
