@@ -61,7 +61,7 @@ class SimpleSGD(Optimizer):
 
 class Orthogonal(Constraint):
     def __call__(self, p):
-        print "here"
+        print("here")
         u,s,v = T.nlinalg.svd(p)
         return K.dot(u,K.transpose(v))
 
