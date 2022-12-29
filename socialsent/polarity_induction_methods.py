@@ -1,7 +1,7 @@
-import util
+from socialsent import util
 import functools
 import numpy as np
-import embedding_transformer
+from socialsent import embedding_transformer
 from scipy.sparse import csr_matrix
 from multiprocessing import Pool
 from sklearn.linear_model import LogisticRegression, Ridge
