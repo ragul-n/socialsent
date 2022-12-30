@@ -23,6 +23,57 @@ from .representations.embedding import Embedding
 Helper methods for learning transformations of word embeddings.
 """
 
+from tensorflow.keras import backend as K
+from tensorflow.keras.optimizers import Optimizer
+
+from tensorflow.keras import backend as K
+from tensorflow.keras.optimizers import Optimizer
+
+class SimpleSGD(Optimizer):
+    def __init__(self, learning_rate=0.01, decay=0., momentum=0., nesterov=False, constraint=None, **kwargs):
+        super(SimpleSGD, self).__init__(**kwargs)
+        self.learning_rate = K.cast_to_floatx(learning_rate)
+        self.decay = K.cast_to_floatx(decay)
+        self.momentum = K.cast_to_floatx(momentum)
+        self.iterations = K.variable(0, dtype='int64', name='iterations')
+        self.nesterov = nesterov
+        self.constraint = constraint
+
+    def _resource_apply_dense(self, grad, var):
+        lr = self.learning_rate
+        if self.decay > 0:
+            lr = lr * (1. / (1. + self.decay * self.iterations))
+        mom = self.momentum
+        vel = self.get_slot(var, 'velocity')
+        if vel is None:
+            vel = self.add_weight(shape=var.shape, initializer='zeros', name='velocity', trainable=False)
+        if self.nesterov:
+            update = lr * grad + mom * vel
+            var_update = var - update
+            if self.constraint is not None:
+                var_update = self.constraint(var_update)
+            self.add_update(K.update(var, var_update), inputs=[grad, vel])
+            self.add_update(K.update(vel, update), inputs=[grad, vel])
+        else:
+            update = mom * vel + lr * grad
+            var_update = var - update
+            if self.constraint is not None:
+                var_update = self.constraint(var_update)
+            self.add_update(K.update(var, var_update), inputs=[grad])
+            self.add_update(K.update(vel, update), inputs=[grad])
+
+    def get_config(self):
+        config = {
+            'learning_rate': float(K.get_value(self.learning_rate)),
+            'decay': float(K.get_value(self.decay)),
+            'momentum': float(K.get_value(self.momentum)),
+            'nesterov': self.nesterov,
+            'constraint': self.constraint
+        }
+        base_config = super(SimpleSGD, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+"""
 class SimpleSGD(Optimizer):
     def __init__(self, lr=5, momentum=0., decay=0.,
                  nesterov=False, **kwargs):
@@ -63,7 +114,8 @@ class SimpleSGD(Optimizer):
                   'nesterov': self.nesterov}
         base_config = super(SimpleSGD, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
+"""
+    
 class Orthogonal(Constraint):
     def __call__(self, p):
         print("here")
